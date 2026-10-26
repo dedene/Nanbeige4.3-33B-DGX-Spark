@@ -1,0 +1,81 @@
+# Nanbeige4.3-33B (GGUF) on one DGX Spark: `docker compose up -d --wait` downloads the pinned GGUF and drafter,
+# pads the drafter's vocabulary, and returns once the OpenAI-compatible API on :8888 answers. Settings: see .env.example.
+name: nanbeige
+
+x-image: &image ${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda13@sha256:2ac42bff86574137dd69b1c8ad85330729d8292e1b4fac0639b67a722c4e9558}
+
+services:
+  # One-shot: fetch the GGUF and the drafter into MODEL_DIR and check their sha256. Resumable, and a no-op once
+  # the revision stamps match. Uses the llama.cpp image because it already ships curl.
+  download:
+    image: *image
+    entrypoint: ["bash", "/download.sh"]
+    environment:
+      QUANT: ${QUANT:-Q6_K}
+      SPEC: ${SPEC:-draft+ngram}
+      MODEL_ID: ${MODEL_ID:-bartowski/Nanbeige_Nanbeige4.3-33B-GGUF}
+      MODEL_REVISION: ${MODEL_REVISION:-9beb68421fdf7be095093a6888325fa2c83ddd38}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ./tools/download.sh:/download.sh:ro
+      - ${MODEL_DIR:-~/.cache/nanbeige}:/models
+    # The image healthcheck probes llama-server's port. This service only runs curl.
+    healthcheck:
+      disable: true
+
+  # One-shot: give the Nanbeige4.1-3B drafter the 33B's vocabulary size (tools/pad_draft.py), so llama.cpp accepts
+  # it. Runs once; a no-op afterwards or when SPEC uses no drafter.
+  draft:
+    image: ${UV_IMAGE:-ghcr.io/astral-sh/uv:python3.12-bookworm@sha256:85d4cb1afa769a7338e095b927bee941cf5ec92266c7424b3f6c0f2748567248}
+    entrypoint: ["bash", "/draft.sh"]
+    depends_on:
+      download:
+        condition: service_completed_successfully
+    environment:
+      QUANT: ${QUANT:-Q6_K}
+      SPEC: ${SPEC:-draft+ngram}
+      UV_CACHE_DIR: /models/.uv-cache
+    volumes:
+      - ./tools/draft.sh:/draft.sh:ro
+      - ./tools/pad_draft.py:/pad_draft.py:ro
+      - ${MODEL_DIR:-~/.cache/nanbeige}:/models
+
+  nanbeige:
+    image: *image
+    entrypoint: ["bash", "/serve.sh"]
+    container_name: nanbeige
+    depends_on:
+      draft:
+        condition: service_completed_successfully
+    gpus: all
+    network_mode: host
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    environment:
+      QUANT: ${QUANT:-Q6_K}
+      SPEC: ${SPEC:-draft+ngram}
+      SPEC_DRAFT_MAX: ${SPEC_DRAFT_MAX:-4}
+      SPEC_DRAFT_P_MIN: ${SPEC_DRAFT_P_MIN:-0.6}
+      SERVED_NAME: ${SERVED_NAME:-nanbeige}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8888}
+      CONTEXT: ${CONTEXT:-262144}
+      PARALLEL: ${PARALLEL:-1}
+      UBATCH: ${UBATCH:-2048}
+      TEMP: ${TEMP:-1.0}
+      TOP_P: ${TOP_P:-0.95}
+      TOP_K: ${TOP_K:-0}
+      MIN_P: ${MIN_P:-0}
+      API_KEY: ${API_KEY:-}
+    volumes:
+      - ./tools/serve.sh:/serve.sh:ro
+      - ${MODEL_DIR:-~/.cache/nanbeige}:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:${PORT:-8888}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10m
+      start_interval: 5s
