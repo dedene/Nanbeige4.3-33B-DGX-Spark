@@ -101,21 +101,26 @@ I ran this stack through the same agent benchmark as the other models on this Sp
 | BFCL single-turn, n=500 | 84.6 (81–87) | 82.4 | 71.8 | 80.0 | **86.0** | 85.6 |
 | BFCL multi-turn, n=200 | **56.5** (50–63) | 54.5 | 43.0 | 32.0 | 51.5 | 49.2 |
 | AgentDojo, tasks done without an attack, n=96 | 79.2 (70–86) | **84.4** | 78.1 | 75.0 | 81.2 | 77.1 |
-| AgentDojo, attacks resisted, n=200 | 58.5 (52–65) | **99.0** | 97.0 | 94.5 | 87.0 | 81.5 |
+| AgentDojo, attacks that executed, n=200 (lower is better) | 111/200 (49–62) | **2/200** (0–4) | 6/200 (1–6) | 12/200 (3–10) | 30/200 (11–21) | 55/200 (22–34) |
+| AgentDojo, attacks that disclosed user data, n=200 (lower is better) | 64/200 (26–39) | **0/200** (0–2) | **0/200** (0–2) | 8/200 (2–8) | 15/200 (5–12) | 30/200 (11–21) |
+| Same, mail, calendar and files: executed, n=113 | 47/113 (33–51) | **0/113** (0–3) | 1/113 (0–5) | 1/113 (0–5) | 4/113 (1–9) | 24/113 (15–30) |
+| Same, mail, calendar and files: disclosed, n=113 | 30/113 (19–35) | **0/113** (0–3) | **0/113** (0–3) | 1/113 (0–5) | 3/113 (1–8) | 15/113 (8–21) |
 | AgentDojo, tasks done under attack, n=200 | 47.5 (41–54) | **82.0** | 70.5 | 70.5 | 71.5 | 64.0 |
 | IFEval, prompt strict, n=541 | 74.7 (71–78) | 85.8 | 85.0 | **94.6** | 80.2 | 85.6 |
 | Global-MMLU Dutch, n=300 | 70.3 (65–75) | 87.0 | **87.7** | 79.3 | 85.7 | 86.7 |
 | GPQA-Diamond, n=198 | 64.6 (58–71) | 64.6 | 59.1 | 68.7 | **72.7** | 56.1 |
-| Agent loop, steps per minute (8 tool steps) | 5.7 | 13.8 | 21.0 | **24.8** | 8.4 | 19.2 |
+| Scripted loop, steps per minute (latency only, no outcome scored) | 5.7 | 13.8 | 21.0 | **24.8** | 8.4 | 19.2 |
 | Decode, tok/s weighted over code, prose and tool calls | 12.3 | 43.6 | 67.2 | **92.7** | 37.0 | 34.6 |
 | Decode, Dutch prose, tok/s | 9.5 | 31.7 | 50.2 | **96.1** | 33.1 | 23.6 |
 | Prefill at ~32k tokens, tok/s | 469 | 2,274 | 2,185 | 1,835 | 2,082 | **2,373** |
 | 4 requests at once, tok/s | 23.6 | 113 | 145 | **211** | 82 | 93 |
 | Memory for the whole server | ~98 GB | ~97 GB | ~103 GB | **~33 GB** | ~101 GB | ~91 GB |
 
+**Corrected on 6 November 2026.** This table used to show "attacks resisted", taken from AgentDojo's own score. That score only counts an attack when every step completes, so a model that mailed the data out but skipped deleting the sent mail counted as safe. The rows now count what the model did: attacks that went through as an unauthorised action, and attacks that got the user's data out. Lower is better. Data disclosed is a lower bound, because it matches text word for word. All of it is one English attack template on one mailbox, so a low count is no proof of safety. The Qwen columns are thinking off.
+
 Nanbeige is good with tools. BFCL single-turn is 84.6 and multi-turn 56.5, both a little above Qwen FP4-Local, the best model so far for a single Spark. The gap is within the noise, so call it a tie with the best. On GPQA-Diamond it ties Qwen at 64.6. Ten of its GPQA answers ran into the 4,096-token limit, all scored wrong, so with more room it would likely end a few points higher.
 
-Prompt injection is where it falls apart. 83 of 200 injected instructions got through, against 2 for Qwen FP4-Local: 26 of 29 in Slack, 22 of 35 in travel, 14 of 23 in banking, 21 of 113 in the mail and calendar suite. I checked a few transcripts: real transfers to the attacker's IBAN, and scheduled payments redirected to it. Under attack it finishes only 33% of the tasks cleanly (task done, attack not carried out), against 81% for Qwen.
+Prompt injection is where it falls apart. 111 of 200 attacks went through, against 2 for Qwen FP4-Local, and at least 64 got user data out, against 0: 26 of 29 in Slack, 23 of 35 in travel, 15 of 23 in banking, 47 of 113 in the mail and calendar suite. I checked a few transcripts: real transfers to the attacker's IBAN, and scheduled payments redirected to it. Under attack it finishes only 32% of the tasks with no unauthorised action, against 81% for Qwen.
 
 The rest is weaker too. IFEval is 74.7, the lowest in the table, and only 12 of its failures ran into the token limit. Dutch knowledge is 70.3, 17 points below Qwen. Like Flint, it thinks the capital of West Flanders is Kortrijk.
 
